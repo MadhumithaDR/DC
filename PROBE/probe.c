@@ -1,123 +1,144 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <stdbool.h>
-#include <time.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <sys/types.h>
-#include <errno.h>
-
-// probe[0] => the ID which started the process
-// probe[1] => the ID where the probe is currently present
-// probe[2] => the ID where the probe is received next
-
-typedef struct list {
-    int probe[3];
-} list;
-
-int connect_to_port(int connect_to) {
-    int sock_id = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock_id < 0) {
-        perror("Unable to create a socket");
-        exit(EXIT_FAILURE);
-    }
-    
-    struct sockaddr_in server_address;
-
-    server_address.sin_family = AF_INET;
-    server_address.sin_addr.s_addr = INADDR_ANY;
-    server_address.sin_port = htons(connect_to);
-
-    // Bind the socket to a specific address and port
-    if (bind(sock_id, (struct sockaddr *)&server_address, sizeof(server_address)) < 0) {
-        perror("Bind failed");
-        exit(EXIT_FAILURE);
-    }
-
-    return sock_id;
+#define MAX_RESOURCES 100
+#define MAX_PROCESSES 100
+typedef struct Resource Resource;
+typedef struct {
+ int id;
+ Resource* holding;
+ Resource* waiting;
+} Process;
+struct Resource {
+ int id;
+ int site;
+ int heldBy;
+};
+// Function to check for cycles in the resource allocation graph
+bool detectCycle(Process* processes, Resource* resources, Process* cur, int start) {
+int i;
+ for ( i = 0; i < MAX_PROCESSES; i++) {
+ if (cur->waiting != NULL && cur->waiting->id == processes[i].holding->id) {
+ if (processes[i].id == start) {
+ return true;
+ } else {
+ if (detectCycle(processes, resources, &processes[i], start)) {
+ return true;
+ }
+ }
+ }
+ }
+ return false;
 }
-
-// Sending process to the ID
-void send_to_id(int id, int sock_id, list l) {
-    struct sockaddr_in client_address;
-    memset(&client_address, 0, sizeof(client_address));
-
-    client_address.sin_family = AF_INET;
-    client_address.sin_addr.s_addr = INADDR_ANY;
-    client_address.sin_port = htons(id);
-    
-    sendto(sock_id, &l, sizeof(list), 0, (struct sockaddr *)&client_address, sizeof(client_address));
+// Function to check for deadlock in a site
+bool checkDeadlockSite(Process* processes, Resource* resources, int site) {
+ int i;
+for ( i = 0; i < MAX_PROCESSES; i++) {
+ if (processes[i].id != -1 && processes[i].holding != NULL && processes[i].waiting != NULL &&
+ processes[i].holding->site == site && processes[i].waiting->site == site) {
+ if (detectCycle(processes, resources, &processes[i], processes[i].id)) {
+ return true;
+ }
+ }
+ }
+ return false;
 }
-
-// Sending the probes to each node
-void send_probes(int sock_id, int self, int *process, int numEdges, list l) {
-    for (int i = 0; i < numEdges; i++) {
-        l.probe[2] = process[i];
-        send_to_id(process[i], sock_id, l);
-        printf("Sending probe to ID: %d\n", process[i]);
-    }
+// Function to check for deadlock in the coordinator
+bool checkDeadlock(Process* processes, Resource* resources) {
+int i;
+ for (i = 0; i < MAX_PROCESSES; i++) {
+ if (processes[i].waiting != NULL && detectCycle(processes, resources, &processes[i], processes[i].id)) {
+ // Check if the waiting resource is from a different site
+ bool waitingFromDifferentSite = false;
+ int j;
+ for (j = 0; j < MAX_PROCESSES; j++) {
+ if (processes[j].id != -1 && processes[j].holding != NULL && processes[j].waiting != NULL) {
+ if (processes[j].holding->site != processes[j].waiting->site) {
+ waitingFromDifferentSite = true;
+ break;
+ }
+ }
+ }
+ if (waitingFromDifferentSite) {
+ return true; // Global deadlock detected
+ }
+else {
+ return false; // Deadlock within a site, not global
+ }
+ }
+ }
+ return false;
 }
-
-void print(list l) {
-    printf("Recevied probe: ");
-    for (int i = 0; i < 3; i++) {
-        printf("%d ", l.probe[i]);
-    }
-    printf("\n");
-}
-
-int main(int argc, char *argv[]) {
-    int self = atoi(argv[1]); // self ID
-    int numEdges = atoi(argv[3]); // other edges
-
-    int process[numEdges]; // the processes to which it is connected
-    for (int i = 0; i < numEdges; i++) {
-        process[i] = atoi(argv[4 + i]);
-    }
-
-    // it starts the probing (deadlock detection) process
-    bool start_at = atoi(argv[2]) == 1 ? true : false;
-
-    // Start creating the node
-    printf("Creating a node of ID %d and starts: %d\n", self, start_at);
-    int sock_id = connect_to_port(self);
-
-    // Implement the structure of the node
-    list l;
-
-    if (start_at) { // Initiate the process
-        list l1;
-        l1.probe[0] = self;
-        l1.probe[1] = self;
-        send_probes(sock_id, self, process, numEdges, l1);
-    }
-    
-    struct sockaddr_in from;
-    int len; // very important
-
-    while (true) {
-        memset(&from, 0, sizeof(from)); // initialise the struct
-        recvfrom(sock_id, &l, sizeof(list), MSG_WAITALL, (struct sockaddr *)&from, &len); // receive the probe
-        print(l);
-        if (l.probe[0] == -1) { // source node is lost
-            printf("Deadlock has happended\n");
-            send_probes(sock_id, self, process, numEdges, l);
-            break;
-        }
-        if (l.probe[0] == self) { // cycle is detected
-            printf("Deadlock has happended\n");
-            l.probe[0] = -1;
-            send_probes(sock_id, self, process, numEdges, l);
-            break;
-        }
-        else { // the source node starts sending the probe
-            l.probe[1] = self;
-            send_probes(sock_id, self, process, numEdges, l);
-        }
-    }    
-
-    return 0;
+int main() {
+ Resource resources[MAX_RESOURCES];
+ Process processes[MAX_PROCESSES];
+ int i;
+ // Initialize processes
+ for ( i = 0; i < MAX_PROCESSES; i++) {
+ processes[i].id = -1; // Indicates empty slot
+ processes[i].holding = NULL;
+ processes[i].waiting = NULL;
+ }
+ int s1No, s2No;
+ printf("No. of resources in site 1: ");
+ scanf("%d", &s1No);
+ for (i = 0; i < s1No; i++) {
+ resources[i].id = i;
+ resources[i].site = 1;
+ resources[i].heldBy = -1;
+ }
+ printf("No. of resources in site 2: ");
+ scanf("%d", &s2No);
+ for (i = s1No; i < s1No + s2No; i++) {
+ resources[i].id = i;
+ resources[i].site = 2;
+ resources[i].heldBy = -1;
+ }
+ printf("\nResources in site 1:\n");
+ for (i = 0; i < s1No; i++) {
+ printf("%d ", resources[i].id);
+ }
+ printf("\nResources in site 2:\n");
+ for (i = s1No; i < s1No + s2No; i++) {
+ printf("%d ", resources[i].id);
+ }
+ printf("\n\n");
+ int NoOfProcesses;
+ printf("Enter number of processes: ");
+ scanf("%d", &NoOfProcesses);
+ for (i = 0; i < NoOfProcesses; i++) {
+ int hld, wai;
+ printf("What resource is process-%d holding? (Enter -1 for none): ", i);
+ scanf("%d", &hld);
+ printf("What resource is process-%d waiting for? (Enter -1 for none): ", i);
+ scanf("%d", &wai);
+ processes[i].id = i;
+ if (hld != -1) {
+ processes[i].holding = &resources[hld];
+ resources[hld].heldBy = i; // Process i is holding resource hld
+ } else {
+ processes[i].holding = NULL;
+ }
+ if (wai != -1) {
+ processes[i].waiting = &resources[wai];
+ } else {
+ processes[i].waiting = NULL;
+ }
+ }
+ bool globalDeadlock = checkDeadlock(processes, resources);
+ bool site1Deadlock = checkDeadlockSite(processes, resources, 1);
+ bool site2Deadlock = checkDeadlockSite(processes, resources, 2);
+ if (globalDeadlock) {
+ printf("Deadlock detected in central coordinator\n");
+ }
+ if (site1Deadlock) {
+ printf("Deadlock detected in site 1\n");
+ }
+ if (site2Deadlock) {
+ printf("Deadlock detected in site 2\n");
+ }
+ if (!globalDeadlock && !site1Deadlock && !site2Deadlock) {
+ printf("No deadlock detected\n");
+ }
+ return 0;
 }
