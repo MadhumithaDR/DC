@@ -1,138 +1,87 @@
-#include<stdio.h>
-#include<string.h>
-#include<stdlib.h>
-#define MAX 10
-int list[MAX],n,c;
-void display()
-{
-int i;
-printf("\nProcesses-->");
-for(i=1;i<=n;i++)
-printf("\t %d",i);
-printf("\nAlive-->");
-for(i=1;i<=n;i++)
-printf("\t %d",list[i]);
-printf("\ncoordinator is::%d",c);
-}
-void ring()
-{
-int msg[20],ring_n,k,i;
-int ch,crash,activate,gid,flag,subcdr;
-do
-{
-printf("\n1.Crash\n2.Activate\n3.Display\n4.Exit\nEnter You choice::");
-scanf("%d",&ch);
-switch(ch)
-{
-case 1:
-printf("\nEnter Process no. to Crash::");
-scanf("%d",&crash);
-if(list[crash])
-list[crash]=0;
-else
-{
-printf("\nProcess is alreaady dead!!");
-break;
-}
-do
-{
-printf("\nEnter election generator id::");
-scanf("%d",&gid);
-if(gid==c)
-{
-printf("\nenter a valid generator id::");
-}
-}while(gid==crash);
-flag=0;
-k=1;
-if(crash==c)
-{
-msg[k++]=gid;
-for(i=(gid+1)%n;i!=gid;i=(i+1)%n)
-{
-if(list[i])
-{
-printf("\nmessage is sent to %d k =%d",i,k);
-msg[k++]=i;
-// printf("Response is sent from %d to %d",i,gid);
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
 
-}
-}
-subcdr=0;
-for(i=1;i<k;i++)
+#define NUM_NODES 5  // Number of nodes in the ring
+
+// Node structure
+typedef struct Node
 {
-printf("\nmsg::%d\n",msg[i]);
-if(subcdr<msg[i])
-{
-subcdr=msg[i];
-}
-}
-c=subcdr;
-}
-display();
-break;
-case 2:
-//activate
-printf("\nEnter Process no. to Activated::");
-scanf("%d",&activate);
-if(!list[activate])
-list[activate]=1;
-else
-{
-printf("\nProcess is alreaady alive!!");
-break;
-}
-//
-if(activate==n)
-{
-c=n;
-break;
-}
-for(i=activate+1;i<=n;i++)
-{
-printf("\nmessage is sent from %d to %d",activate,i);
-if(list[i])
-{
-subcdr=i;
-printf("\nResponse is sent from %d to %d",i,activate);
-flag=1;
-}
-}
-if(flag==1)
-{
-c=subcdr;
-}
-else
-{
-c=activate;
+    int id;
+    bool isCoordinator;
+    bool isFailed;
+} Node;
+
+// Function prototypes
+void initiateElection(Node nodes[], int initiatingNode);
+void printCoordinator(Node nodes[]);
+
+int main() {
+    Node nodes[NUM_NODES];
+
+    // Initialize nodes
+    for (int i = 0; i < NUM_NODES; i++) {
+        nodes[i].id = i;
+        nodes[i].isCoordinator = false;
+        nodes[i].isFailed = false;
+    }
+
+    // Simulate a failed node (for example, node 2)
+    int failed_process;
+    printf("Enter the process that failed: ");
+    scanf("%d",&failed_process);
+    nodes[failed_process].isFailed = true;
+
+    // User chooses the node that initiates the election (for example, node 1)
+    int initiatingNode;
+    printf("Enter the process ID that initiates the election (0 to %d): ", NUM_NODES - 1);
+    scanf("%d", &initiatingNode);
+
+    // Start election process
+    initiateElection(nodes, initiatingNode);
+
+    // Print coordinator
+    printCoordinator(nodes);
+
+    return 0;
 }
 
-
-display();
-break;
-case 3:
-display();
-break;
-case 4:
-break;
-}
-}while(ch!=4);
-
-}
-int main()
+// Function to initiate the election process
+void initiateElection(Node nodes[], int initiatingNode)
 {
-int i,j;
-printf("\nEnter no. of process::");
-scanf("%d",&n);
-for(i=1;i<=n;i++)
-{
-printf("\nEnter Process %d is Alive or not(0/1)::",i);
-scanf("%d",&list[i]);
-if(list[i])
-c=i;
+    int highestId = -1;
+    int coordinatorIndex = -1;
+
+    // Find the highest id among the nodes
+    for (int i = 0; i < NUM_NODES; i++) {
+        if (!nodes[i].isFailed && nodes[i].id > highestId) {
+            highestId = nodes[i].id;
+            coordinatorIndex = i;
+        }
+    }
+
+    // Propagate the election message clockwise in a circular manner, skipping failed nodes
+    printf("Election message initiated by process %d\n", initiatingNode);
+    for (int i = initiatingNode; ; i = (i + 1) % NUM_NODES) {
+        if (!nodes[i].isFailed) {
+            printf("Process %d forwards the election message\n", nodes[i].id);
+        }
+        if (i == (initiatingNode - 1 + NUM_NODES) % NUM_NODES)
+            break;  // Message has completed a full circle
+    }
+
+    // Declare the coordinator
+    nodes[coordinatorIndex].isCoordinator = true;
+    printf("Process %d becomes the coordinator\n", nodes[coordinatorIndex].id);
 }
-display();
-printf("\nRING ALGORITHM\n");
-ring();
-return 0;
+
+// Function to print the coordinator
+void printCoordinator(Node nodes[]) {
+    for (int i = 0; i < NUM_NODES; i++) {
+        if (nodes[i].isCoordinator) {
+            printf("Coordinator: Node %d\n", nodes[i].id);
+            break;
+        }
+    }
+
 }
