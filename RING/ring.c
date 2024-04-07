@@ -14,9 +14,10 @@ for(i=1;i<=n;i++)
 printf("\t %d",list[i]);
 printf("\ncoordinator is::%d",c);
 }
-void bully()
+void ring()
 {
-int ch,crash,activate,i,gid,flag,subcdr;
+int msg[20],ring_n,k,i;
+int ch,crash,activate,gid,flag,subcdr;
 do
 {
 printf("\n1.Crash\n2.Activate\n3.Display\n4.Exit\nEnter You choice::");
@@ -43,30 +44,35 @@ printf("\nenter a valid generator id::");
 }
 }while(gid==crash);
 flag=0;
+k=1;
 if(crash==c)
 {
-for(i=gid+1;i<=n;i++)
+msg[k++]=gid;
+for(i=(gid+1)%n;i!=gid;i=(i+1)%n)
 {
-printf("\nmessage is sent from %d to %d",gid,i);
 if(list[i])
 {
-subcdr=i;
-printf("Response is sent from %d to %d",i,gid);
-flag=1;
+printf("\nmessage is sent to %d k =%d",i,k);
+msg[k++]=i;
+// printf("Response is sent from %d to %d",i,gid);
+
 }
 }
-if(flag==1)
+subcdr=0;
+for(i=1;i<k;i++)
 {
+printf("\nmsg::%d\n",msg[i]);
+if(subcdr<msg[i])
+{
+subcdr=msg[i];
+}
+}
 c=subcdr;
-}
-else
-{
-c=gid;
-}
 }
 display();
 break;
 case 2:
+//activate
 printf("\nEnter Process no. to Activated::");
 scanf("%d",&activate);
 if(!list[activate])
@@ -76,6 +82,7 @@ else
 printf("\nProcess is alreaady alive!!");
 break;
 }
+//
 if(activate==n)
 {
 c=n;
@@ -87,7 +94,7 @@ printf("\nmessage is sent from %d to %d",activate,i);
 if(list[i])
 {
 subcdr=i;
-printf("Response is sent from %d to %d",i,activate);
+printf("\nResponse is sent from %d to %d",i,activate);
 flag=1;
 }
 }
@@ -99,6 +106,8 @@ else
 {
 c=activate;
 }
+
+
 display();
 break;
 case 3:
@@ -108,6 +117,7 @@ case 4:
 break;
 }
 }while(ch!=4);
+
 }
 int main()
 {
@@ -122,7 +132,7 @@ if(list[i])
 c=i;
 }
 display();
-printf("\nBULLY ALGORITHM\n");
-bully();
+printf("\nRING ALGORITHM\n");
+ring();
 return 0;
 }
